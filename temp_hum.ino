@@ -21,8 +21,11 @@ www.seeedstudio.com/wiki/
 #include <DHT.h>
 #include <SeeedGrayOLED.h>
 #include <Wire.h>
+#include "running_average.h"
 
 #define MAXWIDTH 12
+
+#define AVERAGE_TIME_MS 300000L
 
 #define DHTPIN A0     // what pin we're connected to
 
@@ -110,15 +113,19 @@ void tempSensor(unsigned char row) {
 }
 
 void gasSensor(unsigned char row) {
-    // gas sensor
     // TODO: check for invalid values
+    static RunningAverage RS_avg(AVERAGE_TIME_MS);
     int sensorValue = analogRead(GASPIN);
     float sensor_volt = (float)sensorValue / 1024 * 5.0;
     float RS_gas = (5.0 - sensor_volt) / sensor_volt;
 
+    RS_avg.addSample(RS_gas);
+
     SeeedGrayOled.setTextXY(row, 0);
     SeeedGrayOled.putString("Gas: ");
     putFloat(row, "Gas: ", RS_gas, 2, "");
+    putFloat(row + 1, "", RS_avg.current(), 2, "");
+
     dumpFloatRaw("MQ9", RS_gas, "RS", sensorValue);
 }
 
@@ -154,5 +161,5 @@ void dustSensor(unsigned char row) {
 void loop() {
     tempSensor(0);
     gasSensor(2);
-    dustSensor(3);
+    dustSensor(4);
 }
