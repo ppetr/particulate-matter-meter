@@ -130,6 +130,7 @@ void gasSensor(unsigned char row) {
 }
 
 void dustSensor(unsigned char row) {
+    static RunningAverage concentration_avg(AVERAGE_TIME_MS);
     float ratio_pct;
     float concentration;
     unsigned long starttime;
@@ -152,8 +153,11 @@ void dustSensor(unsigned char row) {
                     + 520 * ratio_pct
                     + 0.62; // using spec sheet curve
     // TODO: convert from pcs/0.01cf to metric system
+    concentration_avg.addSample(concentration);
 
     putFloat(row, "Dust: ", concentration, 0, "");
+    putFloat(row + 1, "", concentration_avg.current(), 0, "");
+
     dumpFloat("dustcycles", cycles, "");
     dumpFloatRaw("dust", concentration, "pcs/0.01cf", ratio_pct);
 }
