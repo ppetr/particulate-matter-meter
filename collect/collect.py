@@ -5,6 +5,7 @@ import datetime
 import logging
 from pyrrd.rrd import DataSource, RRA, RRD
 import serial
+import sys
 import time
 
 SERIAL='/dev/ttyUSB0'
@@ -87,6 +88,8 @@ def RrdProcess(rrdfile, samples):
         rrd.bufferValue(sample.time, sample.temperature, sample.humidity,
                         sample.mq9, sample.dust_pc, sample.dust_raw)
         rrd.update(debug=True)
+        # Flush the print statements executed so far.
+        sys.stdout.flush()
 
 def SerialLines():
     with serial.Serial(SERIAL, 9600) as ser:
