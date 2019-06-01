@@ -19,7 +19,6 @@ www.seeedstudio.com/wiki/
 #include <stdio.h>
 #include <string.h>
 #include <DHT.h>
-#include <SeeedGrayOLED.h>
 #include <Wire.h>
 #include "running_average.h"
 
@@ -47,6 +46,18 @@ DHT dht(DHTPIN, DHTTYPE);
 #define DUSTPIN 8
 #define DUST_SAMPLE_TIME_US (30L*1000*1000)
 
+struct {
+    float humidity; // %
+    float temperature;
+
+    float mq9_gas;
+    float mq9_gas_raw_volts;
+
+    float dust;  // pcs/0.01cf
+    float dust_raw;  // %
+    unsigned int dust_cycles;
+} data;
+
 void setup()
 {
 
@@ -54,79 +65,26 @@ void setup()
     Wire.begin();
     
     Serial.begin(9600);
-  
-    SeeedGrayOled.init();  //initialize SEEED Gray OLED display
-    SeeedGrayOled.clearDisplay();     // clear the screen and set start position to top left corner
-    SeeedGrayOled.setNormalDisplay(); // Set display to Normal mode
-    SeeedGrayOled.setVerticalMode();  // Set to vertical mode for displaying textbvg
 
     pinMode(8, INPUT);
-}
-
-void putFloat(unsigned char row, const char* label, float v,
-              unsigned char decimals, const char* suffix) {
-    const unsigned char used = strlen(label) + strlen(suffix);
-    char buf[16];
-    SeeedGrayOled.setTextXY(row, 0);
-    SeeedGrayOled.putString(label);
-    SeeedGrayOled.putString(dtostrf(v, MAXWIDTH - used, decimals, buf));
-    SeeedGrayOled.putString(suffix);
-}
-
-void dumpFloatInternal(const char* label, float value, const char* unit) {
-    Serial.print(label);
-    Serial.print(",");
-    Serial.print(value);
-    Serial.print(",");
-    Serial.print(unit);
-    Serial.print(",");
-}
-
-void dumpFloat(const char* label, float value, const char* unit) {
-    dumpFloatInternal(label, value, unit);
-    Serial.println();
-}
-
-void dumpFloatRaw(const char* label, float value, const char* unit, float raw) {
-    dumpFloatInternal(label, value, unit);
-    Serial.println(raw);
 }
 
 void tempSensor(unsigned char row) {
     // Reading temperature or humidity takes about 250 milliseconds!
     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-    float h = dht.readHumidity();
-    float t = dht.readTemperature();
-
-    // check if returns are valid, if they are NaN (not a number) then something went wrong!
-    if (isnan(t) || isnan(h)) {
-        SeeedGrayOled.setTextXY(row, 0);
-        SeeedGrayOled.putString("Failed to read from DHT");
-
-    } else {
-        putFloat(row, "Temp: ", t, 1, "C");
-        dumpFloat("temperature", t, "C");    
-    
-        putFloat(row + 1, "Hum: ", h, 1, "%");
-        dumpFloat("humidity", h, "%");
-    }
+    data.humidity = dht.readHumidity();
+    data.temperature = dht.readTemperature();
 }
 
 void gasSensor(unsigned char row) {
     // TODO: check for invalid values
     static RunningAverage RS_avg(AVERAGE_TIME_MS);
     int sensorValue = analogRead(GASPIN);
-    float sensor_volt = (float)sensorValue / 1024 * 5.0;
-    float RS_gas = (5.0 - sensor_volt) / sensor_volt;
+    float sensor_volts = (float)sensorValue / 1024 * 5.0;
 
-    RS_avg.addSample(RS_gas);
-
-    SeeedGrayOled.setTextXY(row, 0);
-    SeeedGrayOled.putString("Gas: ");
-    putFloat(row, "Gas: ", RS_gas, 2, "");
-    putFloat(row + 1, "", RS_avg.current(), 2, "");
-
-    dumpFloatRaw("MQ9", RS_gas, "RS", sensorValue);
+    data.mq9_gas = (5.0 - sensor_volts) / sensor_volts;
+    data.mq9_gas_raw_volts = sensor_volts;
+    RS_avg.addSample(data.mq9_gas);
 }
 
 void dustSensor(unsigned char row) {
@@ -155,15 +113,44 @@ void dustSensor(unsigned char row) {
     // TODO: convert from pcs/0.01cf to metric system
     concentration_avg.addSample(concentration);
 
-    putFloat(row, "Dust: ", concentration, 0, "");
-    putFloat(row + 1, "", concentration_avg.current(), 0, "");
+    data.dust_cycles = cycles;
+    data.dust = concentration;
+    data.dust_raw = ratio_pct;
+}
 
-    dumpFloat("dustcycles", cycles, "");
-    dumpFloatRaw("dust", concentration, "pcs/0.01cf", ratio_pct);
+bool dumpFloat(const char* name, float value, char* separator) {
+    if (isnan(value)) {
+        return false;
+    }
+    Serial.print(*separator);
+    Serial.print(name);
+    Serial.print("=");
+    Serial.print(value);
+    *separator = ',';
+    return true;
+}
+
+void dumpData() {
+    Serial.print("sample");
+    // Optionally tags would go here.
+
+    char separator = ' ';
+    dumpFloat("dust_pc", data.dust, &separator);
+    dumpFloat("dust_raw", data.dust_raw, &separator);
+
+    dumpFloat("humidity", data.humidity, &separator);
+    dumpFloat("temperature", data.temperature, &separator);
+
+    // TODO: Make sure the output values are correct and include them as well.
+    // dumpFloat("mq9", data.mq9_gas, &separator);
+    // dumpFloat("mq9_volts", data.mq9_gas_raw_volts, &separator);
+
+    Serial.println();
 }
 
 void loop() {
     tempSensor(0);
     gasSensor(2);
     dustSensor(4);
+    dumpData();
 }
